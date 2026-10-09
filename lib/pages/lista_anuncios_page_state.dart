@@ -1,6 +1,10 @@
-part of 'lista_anuncios_page.dart';
+import 'package:flutter/material.dart';
 
-class _ListaAnunciosPageState extends State<ListaAnunciosPage> {
+import '../models/anuncio.dart';
+import 'cadastro_anuncio_page.dart';
+import 'lista_anuncios_page.dart';
+
+class ListaAnunciosPageState extends State<ListaAnunciosPage> {
   final List<Anuncio> anuncios = [
     Anuncio(
       titulo: 'Celular Motorola',

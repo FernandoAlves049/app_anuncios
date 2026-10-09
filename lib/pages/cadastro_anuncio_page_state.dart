@@ -1,6 +1,9 @@
-part of 'cadastro_anuncio_page.dart';
+import 'package:flutter/material.dart';
 
-class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
+import '../models/anuncio.dart';
+import 'cadastro_anuncio_page.dart';
+
+class CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
   final formKey = GlobalKey<FormState>();
   final tituloController = TextEditingController();
   final descricaoController = TextEditingController();
