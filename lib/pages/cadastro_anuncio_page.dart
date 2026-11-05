@@ -1,4 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 import '../models/anuncio.dart';
 
@@ -16,15 +21,22 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
   final tituloController = TextEditingController();
   final descricaoController = TextEditingController();
   final precoController = TextEditingController();
+  final imagePicker = ImagePicker();
+
+  XFile? imagemSelecionada;
+  String? imagemPath;
+  bool removerImagem = false;
+  bool salvando = false;
 
   @override
   void initState() {
     super.initState();
-
-    if (widget.anuncio != null) {
-      tituloController.text = widget.anuncio!.titulo;
-      descricaoController.text = widget.anuncio!.descricao;
-      precoController.text = widget.anuncio!.preco.toString();
+    final anuncio = widget.anuncio;
+    if (anuncio != null) {
+      tituloController.text = anuncio.titulo;
+      descricaoController.text = anuncio.descricao;
+      precoController.text = anuncio.preco.toString();
+      imagemPath = anuncio.imagemPath;
     }
   }
 
@@ -36,20 +48,123 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
     super.dispose();
   }
 
-  void salvarAnuncio() {
-    if (!formKey.currentState!.validate()) {
-      return;
+  Future<void> selecionarImagem(ImageSource origem) async {
+    try {
+      final arquivo = await imagePicker.pickImage(
+        source: origem,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (arquivo == null || !mounted) return;
+      setState(() {
+        imagemSelecionada = arquivo;
+        removerImagem = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível selecionar a imagem.')),
+      );
     }
+  }
 
-    final preco = double.parse(precoController.text.replaceAll(',', '.'));
-
-    final anuncio = Anuncio(
-      titulo: tituloController.text,
-      descricao: descricaoController.text,
-      preco: preco,
+  Future<void> escolherOrigemDaImagem() async {
+    final origem = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Escolher da galeria'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Tirar uma foto'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
     );
+    if (origem != null) await selecionarImagem(origem);
+  }
 
-    Navigator.pop(context, anuncio);
+  Future<String?> copiarImagemParaAplicativo() async {
+    if (removerImagem) return null;
+    final selecionada = imagemSelecionada;
+    if (selecionada == null) return imagemPath;
+
+    final diretorio = await getApplicationDocumentsDirectory();
+    final extensao = path.extension(selecionada.path).isEmpty
+        ? '.jpg'
+        : path.extension(selecionada.path);
+    final destino = File(
+      path.join(
+        diretorio.path,
+        'anuncio_${DateTime.now().microsecondsSinceEpoch}$extensao',
+      ),
+    );
+    await File(selecionada.path).copy(destino.path);
+    return destino.path;
+  }
+
+  Future<void> salvarAnuncio() async {
+    if (!formKey.currentState!.validate() || salvando) return;
+
+    setState(() => salvando = true);
+    try {
+      final preco = double.parse(precoController.text.replaceAll(',', '.'));
+      final caminhoDaImagem = await copiarImagemParaAplicativo();
+      final anuncio = Anuncio(
+        id: widget.anuncio?.id,
+        titulo: tituloController.text.trim(),
+        descricao: descricaoController.text.trim(),
+        preco: preco,
+        imagemPath: caminhoDaImagem,
+      );
+      if (mounted) Navigator.pop(context, anuncio);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível salvar o anúncio.')),
+      );
+      setState(() => salvando = false);
+    }
+  }
+
+  Widget construirImagem() {
+    final arquivoSelecionado = imagemSelecionada;
+    if (arquivoSelecionado != null) {
+      return Image.file(
+        File(arquivoSelecionado.path),
+        width: double.infinity,
+        height: 190,
+        fit: BoxFit.cover,
+      );
+    }
+    final caminhoAtual = removerImagem ? null : imagemPath;
+    if (caminhoAtual != null && File(caminhoAtual).existsSync()) {
+      return Image.file(
+        File(caminhoAtual),
+        width: double.infinity,
+        height: 190,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const Icon(Icons.image_not_supported),
+      );
+    }
+    return const SizedBox(
+      height: 150,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_a_photo_outlined, size: 42),
+          SizedBox(height: 8),
+          Text('Adicionar uma imagem'),
+        ],
+      ),
+    );
   }
 
   @override
@@ -61,69 +176,95 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
         backgroundColor: const Color(0xFFFFE600),
         title: Text(editando ? 'Editar anúncio' : 'Novo anúncio'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                controller: tituloController,
-                decoration: const InputDecoration(
-                  labelText: 'Título',
-                  border: OutlineInputBorder(),
+      body: Form(
+        key: formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            InkWell(
+              onTap: escolherOrigemDaImagem,
+              borderRadius: BorderRadius.circular(12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  color: Colors.black12,
+                  alignment: Alignment.center,
+                  child: construirImagem(),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Digite o título';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: descricaoController,
-                decoration: const InputDecoration(
-                  labelText: 'Descrição',
-                  border: OutlineInputBorder(),
+            ),
+            if (imagemSelecionada != null ||
+                (imagemPath != null && !removerImagem))
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    imagemSelecionada = null;
+                    removerImagem = true;
+                  }),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Remover imagem'),
                 ),
-                maxLines: 3,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Digite a descrição';
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: precoController,
-                decoration: const InputDecoration(
-                  labelText: 'Preço',
-                  prefixText: 'R\$ ',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Digite o preço';
-                  }
-
-                  final preco = double.tryParse(value.replaceAll(',', '.'));
-                  if (preco == null || preco <= 0) {
-                    return 'Preço inválido';
-                  }
-
-                  return null;
-                },
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: tituloController,
+              decoration: const InputDecoration(
+                labelText: 'Título',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: salvarAnuncio,
-                child: const Text('Salvar'),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Digite o título'
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: descricaoController,
+              decoration: const InputDecoration(
+                labelText: 'Descrição',
+                border: OutlineInputBorder(),
               ),
-            ],
-          ),
+              maxLines: 3,
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Digite a descrição'
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: precoController,
+              decoration: const InputDecoration(
+                labelText: 'Preço',
+                prefixText: 'R\$ ',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Digite o preço';
+                }
+                final preco = double.tryParse(value.replaceAll(',', '.'));
+                if (preco == null || preco <= 0) {
+                  return 'Preço inválido';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: salvando ? null : salvarAnuncio,
+              icon: salvando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: Text(salvando ? 'Salvando...' : 'Salvar anúncio'),
+            ),
+          ],
         ),
       ),
     );
