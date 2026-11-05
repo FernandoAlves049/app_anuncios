@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
@@ -24,7 +26,9 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
   final imagePicker = ImagePicker();
 
   XFile? imagemSelecionada;
+  Uint8List? imagemSelecionadaBytes;
   String? imagemPath;
+  String? imagemData;
   bool removerImagem = false;
   bool salvando = false;
 
@@ -37,6 +41,7 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
       descricaoController.text = anuncio.descricao;
       precoController.text = anuncio.preco.toString();
       imagemPath = anuncio.imagemPath;
+      imagemData = anuncio.imagemData;
     }
   }
 
@@ -56,8 +61,11 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
         maxWidth: 1600,
       );
       if (arquivo == null || !mounted) return;
+      final bytes = await arquivo.readAsBytes();
+      if (!mounted) return;
       setState(() {
         imagemSelecionada = arquivo;
+        imagemSelecionadaBytes = bytes;
         removerImagem = false;
       });
     } catch (_) {
@@ -91,10 +99,17 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
     if (origem != null) await selecionarImagem(origem);
   }
 
-  Future<String?> copiarImagemParaAplicativo() async {
-    if (removerImagem) return null;
+  Future<({String? caminho, String? dados})> persistirImagem() async {
+    if (removerImagem) return (caminho: null, dados: null);
     final selecionada = imagemSelecionada;
-    if (selecionada == null) return imagemPath;
+    if (selecionada == null) {
+      return (caminho: imagemPath, dados: imagemData);
+    }
+
+    final bytes = imagemSelecionadaBytes ?? await selecionada.readAsBytes();
+    if (kIsWeb) {
+      return (caminho: null, dados: base64Encode(bytes));
+    }
 
     final diretorio = await getApplicationDocumentsDirectory();
     final extensao = path.extension(selecionada.path).isEmpty
@@ -107,7 +122,7 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
       ),
     );
     await File(selecionada.path).copy(destino.path);
-    return destino.path;
+    return (caminho: destino.path, dados: null);
   }
 
   Future<void> salvarAnuncio() async {
@@ -116,13 +131,14 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
     setState(() => salvando = true);
     try {
       final preco = double.parse(precoController.text.replaceAll(',', '.'));
-      final caminhoDaImagem = await copiarImagemParaAplicativo();
+      final imagemPersistida = await persistirImagem();
       final anuncio = Anuncio(
         id: widget.anuncio?.id,
         titulo: tituloController.text.trim(),
         descricao: descricaoController.text.trim(),
         preco: preco,
-        imagemPath: caminhoDaImagem,
+        imagemPath: imagemPersistida.caminho,
+        imagemData: imagemPersistida.dados,
       );
       if (mounted) Navigator.pop(context, anuncio);
     } catch (_) {
@@ -135,17 +151,26 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
   }
 
   Widget construirImagem() {
-    final arquivoSelecionado = imagemSelecionada;
-    if (arquivoSelecionado != null) {
-      return Image.file(
-        File(arquivoSelecionado.path),
+    final bytesSelecionados = imagemSelecionadaBytes;
+    if (bytesSelecionados != null) {
+      return Image.memory(
+        bytesSelecionados,
         width: double.infinity,
         height: 190,
         fit: BoxFit.cover,
       );
     }
+    if (kIsWeb && !removerImagem && imagemData != null) {
+      return Image.memory(
+        base64Decode(imagemData!),
+        width: double.infinity,
+        height: 190,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const Icon(Icons.image_not_supported),
+      );
+    }
     final caminhoAtual = removerImagem ? null : imagemPath;
-    if (caminhoAtual != null && File(caminhoAtual).existsSync()) {
+    if (!kIsWeb && caminhoAtual != null && File(caminhoAtual).existsSync()) {
       return Image.file(
         File(caminhoAtual),
         width: double.infinity,
@@ -195,12 +220,13 @@ class _CadastroAnuncioPageState extends State<CadastroAnuncioPage> {
               ),
             ),
             if (imagemSelecionada != null ||
-                (imagemPath != null && !removerImagem))
+                (!removerImagem && (imagemPath != null || imagemData != null)))
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: () => setState(() {
                     imagemSelecionada = null;
+                    imagemSelecionadaBytes = null;
                     removerImagem = true;
                   }),
                   icon: const Icon(Icons.delete_outline),

@@ -4,6 +4,7 @@ class Anuncio {
   final String descricao;
   final double preco;
   final String? imagemPath;
+  final String? imagemData;
 
   const Anuncio({
     this.id,
@@ -11,6 +12,7 @@ class Anuncio {
     required this.descricao,
     required this.preco,
     this.imagemPath,
+    this.imagemData,
   });
 
   Map<String, Object?> toMap() {
@@ -19,6 +21,7 @@ class Anuncio {
       'descricao': descricao,
       'preco': preco,
       'imagem_path': imagemPath,
+      'imagem_data': imagemData,
     };
     if (id != null) map['id'] = id;
     return map;
@@ -31,6 +34,7 @@ class Anuncio {
       descricao: map['descricao'] as String,
       preco: (map['preco'] as num).toDouble(),
       imagemPath: map['imagem_path'] as String?,
+      imagemData: map['imagem_data'] as String?,
     );
   }
 }

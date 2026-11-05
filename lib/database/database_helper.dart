@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -14,10 +15,12 @@ class DatabaseHelper {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    final caminho = join(await getDatabasesPath(), _nomeBanco);
+    final caminho = kIsWeb
+        ? _nomeBanco
+        : join(await getDatabasesPath(), _nomeBanco);
     _database = await openDatabase(
       caminho,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_nomeTabela (
@@ -25,9 +28,17 @@ class DatabaseHelper {
             titulo TEXT NOT NULL,
             descricao TEXT NOT NULL,
             preco REAL NOT NULL,
-            imagem_path TEXT
+            imagem_path TEXT,
+            imagem_data TEXT
           )
         ''');
+      },
+      onUpgrade: (db, versaoAntiga, versaoNova) async {
+        if (versaoAntiga < 2) {
+          await db.execute(
+            'ALTER TABLE $_nomeTabela ADD COLUMN imagem_data TEXT',
+          );
+        }
       },
     );
     return _database!;

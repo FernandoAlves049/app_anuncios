@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -196,6 +198,20 @@ class _ListaAnunciosPageState extends State<ListaAnunciosPage> {
   }
 
   Widget miniatura(Anuncio anuncio) {
+    if (kIsWeb) {
+      final dados = anuncio.imagemData;
+      if (dados == null) {
+        return const CircleAvatar(child: Icon(Icons.image_outlined));
+      }
+      try {
+        return CircleAvatar(
+          backgroundImage: MemoryImage(base64Decode(dados)),
+          onBackgroundImageError: (_, _) {},
+        );
+      } catch (_) {
+        return const CircleAvatar(child: Icon(Icons.image_not_supported));
+      }
+    }
     final caminho = anuncio.imagemPath;
     if (caminho == null || !File(caminho).existsSync()) {
       return const CircleAvatar(child: Icon(Icons.image_outlined));
